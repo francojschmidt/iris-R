@@ -1,6 +1,115 @@
-data(iris)
+### Functions (CI, variance test, mean test)
 
-# scatter plot for each pair of species
+# CI of mean
+confidence_interval <- function(x, conf_level = 0.95) {
+  n <- length(x)
+  x_bar <- mean(x)
+  s <- sd(x)
+  alpha <- 1 - conf_level
+  t_crit <- qt(1 - alpha / 2, df = n - 1)
+  margin <- t_crit * (s / sqrt(n))
+  lower <- x_bar - margin
+  upper <- x_bar + margin
+  return(invisible(list(mean = x_bar, lower = lower, upper = upper,
+                        conf_level = conf_level)))
+}
+
+# Two-sample variance hypothesis test (two-sided)
+variance_test <- function(x1, x2, alpha = 0.05) {
+  n1 <- length(x1);  n2 <- length(x2)
+  var1 <- var(x1);   var2 <- var(x2)
+  
+  if (var1 >= var2) {
+    F_stat <- var1 / var2
+    df1 <- n1 - 1
+    df2 <- n2 - 1
+  } else {
+    F_stat <- var2 / var1
+    df1 <- n2 - 1
+    df2 <- n1 - 2
+  }
+  
+  p_val <- 2 * min(
+    pf(F_stat, df1, df2, lower.tail = TRUE),
+    pf(F_stat, df1, df2, lower.tail = FALSE)
+  )
+  p_val <- min(p_val, 1)
+  
+  cat(sprintf("Variance Test Results:\n"))
+  cat(sprintf("Sample Var 1 = %.4f\n", var1))
+  cat(sprintf("Sample Var 2 = %.4f\n", var2))
+  cat(sprintf("F statistic = %.4f\n", F_stat))
+  cat(sprintf("Degres of freedom: (df1 = %d, df2 = %d)\n", df1, df2))
+  cat(sprintf("p-value = %.6f\n", p_val))
+  
+  if (p_val < alpha) {
+    cat("Variance Test Decision: REJECT H0\n\n")
+    equal_var <- FALSE
+  } else {
+    cat("Variance Test Decision: FAIL TO REJECT H0\n\n")
+    equal_var <- TRUE
+  }
+  
+  return(invisible(list(F_stat = F_stat, df1 = df1, df2 = df2,
+                        p_val_var = p_val, equal_var = equal_var
+                        )))
+}
+
+# Two-sample mean hypothesis test
+two_sample_t_test <- function(x1, x2, alpha_mean = 0.05, alpha_var = 0.05, alternative = "two.sided") {
+  n1 <- length(x1);  n2 <- length(x2)
+  m1 <- mean(x1);    m2 <- mean(x2)
+  var1 <- var(x1);   var2 <- var(x2)
+  
+  var_test <- variance_test(x1, x2, alpha_var)
+  
+  # choose test type based on equal/unequal variances
+  if (var_test$equal_var) {
+    
+    # degrees of freedom and pooled variance
+    df <- n1 + n2 - 2
+    var_p <- ((n1 - 1) * var1 + (n2 - 1) * var2) / df
+    
+    t_stat <- (m1 - m2) / sqrt(var_p * (1 / n1 + 1 / n2))
+    
+  } else {
+    
+    # test statistic
+    se  <- sqrt(var1 / n1 + var2 / n2)
+    t_stat <- (m1 - m2) / se
+    
+    # Welch-Satterthwaite degrees of freedom
+    df_num <- (var1 / n1 + var2 / n2)^2
+    df_den <- (var1 / n1)^2 / (n1 - 1) + (var2 / n2)^2 / (n2 - 1)
+    df <- df_num / df_den
+    
+  }
+    
+  # p-value based on alternative
+  if (alternative == "two.sided") {
+    p_val <- 2 * pt(-abs(t_stat), df = df)
+  } else if (alternative == "greater") {
+    p_val <- pt(t_stat, df = df, lower.tail = FALSE)
+  } else if (alternative == "less") {
+    p_val <- pt(t_stat, df = df, lower.tail = TRUE)
+  } else {
+    stop("alternative must be 'two.sided', 'greater', or 'less'")
+  }
+  if (p_val < alpha_mean) {
+    cat("Mean Test Decision: REJECT H0\n\n")
+  } else {
+    cat("Mean Test Decision: FAIL TO REJECT H0\n\n")
+  }
+  return(invisible(list(
+    var_test,
+    list(t_stat = t_stat, df = df, p_value = p_val, reject = p_val < alpha_mean)
+    )))
+}
+
+
+### Load and format data
+
+data(iris)
 
 features <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
 pairs_list <- combn(features, 2, simplify = FALSE)
@@ -8,7 +117,11 @@ pairs_list <- combn(features, 2, simplify = FALSE)
 colors <- c("setosa" = "red", "versicolor" = "blue", "virginica" = "green3")
 species_colors <- colors[as.character(iris$Species)]
 
-par(mfrow = c(2, 3), mar = c(4, 4, 3, 1))
+
+### Plots
+
+# Scatter plot for each pair of species
+par(mfrow = c(3, 2), mar = c(4, 4, 3, 1))
 for (pair in pairs_list) {
   plot(iris[[pair[1]]], iris[[pair[2]]],
        col  = species_colors,
@@ -24,8 +137,7 @@ for (pair in pairs_list) {
 }
 par(mfrow = c(1, 1))
 
-#Group box plots for each feature vs species
-
+# Group box plots for each feature vs species
 par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
 for (feat in features) {
   boxplot(iris[[feat]] ~ iris$Species,
@@ -43,39 +155,24 @@ setosa     <- subset(iris, Species == "setosa")
 versicolor <- subset(iris, Species == "versicolor")
 virginica  <- subset(iris, Species == "virginica")
 
-par(mfrow = c(2, 3), mar = c(4, 4, 3, 1))
+par(mfrow = c(3, 2), mar = c(4, 4, 3, 1))
 # Petal length histograms
 hist(setosa$Petal.Length,     col = "red",    main = "Setosa - Petal Length",
      xlab = "Petal length (cm)", xlim = c(0, 8))
-hist(versicolor$Petal.Length, col = "blue",   main = "Versicolor - Petal Length",
-     xlab = "Petal length (cm)", xlim = c(0, 8))
-hist(virginica$Petal.Length,  col = "green3", main = "Virginica - Petal Length",
-     xlab = "Petal length (cm)", xlim = c(0, 8))
-# Petal Width histograms
 hist(setosa$Petal.Width,      col = "red",    main = "Setosa - Petal Width",
      xlab = "Petal width (cm)", xlim = c(0, 3))
+hist(versicolor$Petal.Length, col = "blue",   main = "Versicolor - Petal Length",
+     xlab = "Petal length (cm)", xlim = c(0, 8))
 hist(versicolor$Petal.Width,  col = "blue",   main = "Versicolor - Petal Width",
      xlab = "Petal width (cm)", xlim = c(0, 3))
+hist(virginica$Petal.Length,  col = "green3", main = "Virginica - Petal Length",
+     xlab = "Petal length (cm)", xlim = c(0, 8))
 hist(virginica$Petal.Width,   col = "green3", main = "Virginica - Petal Width",
      xlab = "Petal width (cm)", xlim = c(0, 3))
 par(mfrow = c(1, 1))
 
-# CI
-confidence_interval <- function(x, conf_level = 0.95) {
-  n <- length(x)
-  x_bar <- mean(x)
-  s <- sd(x)
-  alpha <- 1 - conf_level
-  t_crit <- qt(1 - alpha / 2, df = n - 1)
-  margin <- t_crit * (s / sqrt(n))
-  lower <- x_bar - margin
-  upper <- x_bar + margin
-  return(invisible(list(mean = x_bar, lower = lower, upper = upper,
-                        conf_level = conf_level)))
-}
 
-
-#CIs for petal length of all species
+### CIs for petal length of all species
 
 cat("Setosa:")
 (ci_setosa<- confidence_interval(setosa$Petal.Length))
@@ -86,47 +183,28 @@ cat("Versicolor:")
 cat("Virginica:")
 (ci_virginica<- confidence_interval(virginica$Petal.Length))
 
-#2 sample hypothesis test
-two_sample_t_test <- function(x1, x2, alpha = 0.05, alternative = "two.sided") {
-  n1 <- length(x1);  n2 <- length(x2)
-  m1 <- mean(x1);    m2 <- mean(x2)
-  s1 <- sd(x1);      s2 <- sd(x2)
-  
-  # Welchss standard error and degrees of freedom
-  se  <- sqrt(s1^2 / n1 + s2^2 / n2)
-  t_stat <- (m1 - m2) / se
-  
-  # Welch-Satterthwaite degrees of freedom
-  df_num <- (s1^2 / n1 + s2^2 / n2)^2
-  df_den <- (s1^2 / n1)^2 / (n1 - 1) + (s2^2 / n2)^2 / (n2 - 1)
-  df <- df_num / df_den
-  
-  # p-value based on alternative
-  if (alternative == "two.sided") {
-    p_val <- 2 * pt(-abs(t_stat), df = df)
-  } else if (alternative == "greater") {
-    p_val <- pt(t_stat, df = df, lower.tail = FALSE)
-  } else if (alternative == "less") {
-    p_val <- pt(t_stat, df = df, lower.tail = TRUE)
-  } else {
-    stop("alternative must be 'two.sided', 'greater', or 'less'")
-  }
-    if (p_val < alpha) {
-    cat("  Decision: REJECT H0\n\n")
-  } else {
-    cat("  Decision: FAIL TO REJECT H0\n\n")
-  }
-  return(invisible(list(t_stat = t_stat, df = df, p_value = p_val,
-                        reject = p_val < alpha)))
-}
 
+### Hypothesis tests
 
 # hypothesis test (0.05)
 cat("length test 1: Virginica > Versicolor")
-test1 <- two_sample_t_test(virginica$Petal.Length, versicolor$Petal.Length, alpha = 0.05, alternative = "greater")
+test1 <- two_sample_t_test(
+    virginica$Petal.Length,
+    versicolor$Petal.Length,
+    alpha_mean = 0.05,
+    alpha_var = 0.05,
+    alternative = "greater"
+  )
+
 
 cat("length test 2: Versicolor > Setosa")
-test2 <- two_sample_t_test(versicolor$Petal.Length, setosa$Petal.Length, alpha = 0.05, alternative = "greater")
+test2 <- two_sample_t_test(
+    versicolor$Petal.Length,
+    setosa$Petal.Length,
+    alpha_mean = 0.05,
+    alpha_var = 0.05,
+    alternative = "greater"
+  )
 
 classify_iris <- function(pl, pw) {
   if (pl < 2.5) return("setosa")
